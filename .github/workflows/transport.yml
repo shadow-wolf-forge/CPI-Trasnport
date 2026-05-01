@@ -32,15 +32,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Get Source OAuth Token (WORKING BASIC STYLE)
+      - name: Get Source OAuth Token
         id: source_token
         run: |
           RESPONSE=$(curl -s \
             "${{ secrets.SRC_TOKEN_URL }}?grant_type=client_credentials" \
             --header "Authorization: ${{ secrets.SRC_TOKEN_BASIC }}")
-
-          echo "=== SOURCE TOKEN RESPONSE ==="
-          echo "$RESPONSE"
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
 
@@ -54,9 +51,6 @@ jobs:
       - name: Download iFlow ZIP
         run: |
           URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
-
-          echo "DOWNLOAD URL:"
-          echo "$URL"
 
           curl -L --fail --silent --show-error \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
@@ -79,15 +73,12 @@ jobs:
           git pull --rebase origin main
           git push origin main
 
-      - name: Get Target OAuth Token (WORKING BASIC STYLE)
+      - name: Get Target OAuth Token
         id: target_token
         run: |
           RESPONSE=$(curl -s \
             "${{ secrets.TGT_TOKEN_URL }}?grant_type=client_credentials" \
             --header "Authorization: ${{ secrets.TGT_TOKEN_BASIC }}")
-
-          echo "=== TARGET TOKEN RESPONSE ==="
-          echo "$RESPONSE"
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
 
@@ -128,7 +119,7 @@ jobs:
 
       - name: Upload iFlow
         run: |
-          curl -v -X PUT \
+          curl -X PUT \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
