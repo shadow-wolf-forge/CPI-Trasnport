@@ -63,14 +63,9 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Set Version
-        id: set_version
+      - name: Encode ZIP to Base64
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          if [ "$VERSION" = "active" ]; then
-            VERSION="1.0.0"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          base64 artifact.zip | tr -d '\n' > artifact.b64
 
       - name: Fetch CSRF
         id: csrf
@@ -90,27 +85,44 @@ jobs:
         id: check
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.set_version.outputs.version }}')" \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
 
-      - name: Upload iFlow
+      - name: Upload iFlow (JSON Base64)
         run: |
           if [ "${{ steps.check.outputs.status }}" = "404" ]; then
-            curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
+            cat <<EOF > payload.json
+          {
+            "Name": "${{ github.event.inputs.iflow_id }}",
+            "Id": "${{ github.event.inputs.iflow_id }}",
+            "PackageId": "${{ secrets.TARGET_PACKAGE_ID }}",
+            "ArtifactContent": "$(cat artifact.b64)"
+          }
+          EOF
+
+            curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/zip" \
-              --data-binary @artifact.zip
+              -H "Content-Type: application/json" \
+              --data @payload.json
+
           else
-            curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.set_version.outputs.version }}')" \
+            cat <<EOF > payload.json
+          {
+            "Name": "${{ github.event.inputs.iflow_id }}",
+            "ArtifactContent": "$(cat artifact.b64)"
+          }
+          EOF
+
+            curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/zip" \
-              --data-binary @artifact.zip
+              -H "Content-Type: application/json" \
+              --data @payload.json
           fi
 
       - name: Deploy iFlow
