@@ -7,7 +7,7 @@ on:
         description: "Integration Flow ID"
         required: true
       version:
-        description: "Version (use exact version like 1.0.0 or active)"
+        description: "Version (or active)"
         required: true
         default: "active"
 
@@ -24,14 +24,6 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-      # -------------------------------
-      # SOURCE CPI AUTH
-      # -------------------------------
       - name: Get Source OAuth Token
         id: source_token
         run: |
@@ -41,36 +33,27 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # -------------------------------
-      # DOWNLOAD IFLOW (FIXED)
-      # -------------------------------
       - name: Download iFlow ZIP
         run: |
-          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
-          echo "Downloading from: $URL"
-          
-          curl -f -X GET "$URL" \
+          curl -X GET \
+            "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip
 
-      # -------------------------------
-      # SAVE TO GITHUB (VERSIONED)
-      # -------------------------------
-      - name: Save artifact
+      - name: Save into repo
         run: |
           mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
-          TS=$(date +%s)
-          cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$TS.zip
+          cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
 
-      - name: Commit & Push
+      # ✅ FIXED COMMIT STEP
+      - name: Commit to GitHub
         run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
           git add .
           git diff --cached --quiet || git commit -m "Backup iFlow ${{ github.event.inputs.iflow_id }} - $(date)"
           git push
 
-      # -------------------------------
-      # TARGET CPI AUTH
-      # -------------------------------
       - name: Get Target OAuth Token
         id: target_token
         run: |
@@ -80,22 +63,16 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # -------------------------------
-      # UPLOAD TO TARGET CPI
-      # -------------------------------
       - name: Upload to Target CPI
         run: |
-          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
+          curl -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "Content-Type: application/zip" \
             --data-binary @artifact.zip
 
-      # -------------------------------
-      # DEPLOY IFLOW
-      # -------------------------------
       - name: Deploy iFlow
         run: |
-          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/DeployIntegrationDesigntimeArtifact" \
+          curl -X POST "${{ secrets.TARGET_API_URL }}/api/v1/DeployIntegrationDesigntimeArtifact" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "Content-Type: application/json" \
             -d '{
