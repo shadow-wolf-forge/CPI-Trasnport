@@ -37,7 +37,7 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ DO NOT TOUCH (your working download)
+      # ✅ KEEPING YOUR ORIGINAL DOWNLOAD (UNCHANGED)
       - name: Download iFlow ZIP
         run: |
           curl -X GET \
@@ -50,7 +50,7 @@ jobs:
           mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
           cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
 
-      - name: Commit to GitHub
+      - name: Commit to GitHub (safe)
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
@@ -68,12 +68,15 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ Encode base64
-      - name: Encode ZIP
+      # ✅ Extract real version from ZIP (CRITICAL)
+      - name: Extract Version
+        id: version
         run: |
-          base64 -w 0 artifact.zip > artifact.b64
+          VERSION=$(unzip -p artifact.zip META-INF/MANIFEST.MF | grep -i "Bundle-Version" | awk '{print $2}')
+          echo "Detected version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # ✅ Fetch CSRF + Cookie
+      # ✅ Fetch CSRF token + cookie
       - name: Fetch CSRF
         id: csrf
         run: |
@@ -88,27 +91,18 @@ jobs:
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
           echo "cookie=$COOKIE" >> $GITHUB_OUTPUT
 
-      # ✅ Check if iFlow exists
+      # ✅ Check if artifact exists
       - name: Check Artifact Exists
         id: check
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.version.outputs.version }}')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
 
-      # ✅ Create payload JSON
-      - name: Create Payload
-        run: |
-          jq -n \
-            --arg content "$(cat artifact.b64)" \
-            '{
-              ArtifactContent: $content
-            }' > payload.json
-
-      # ✅ POST or PUT based on existence
-      - name: Upload iFlow (POST/PUT)
+      # ✅ Upload (POST or PUT with correct format)
+      - name: Upload iFlow
         run: |
           if [ "${{ steps.check.outputs.status }}" = "404" ]; then
             echo "Creating new iFlow..."
@@ -117,24 +111,18 @@ jobs:
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"Id\": \"${{ github.event.inputs.iflow_id }}\",
-                \"PackageId\": \"${{ github.event.inputs.package_id }}\",
-                \"ArtifactContent\": \"$(cat artifact.b64)\"
-              }"
+              -H "Content-Type: application/zip" \
+              --data-binary @artifact.zip
 
           else
             echo "Updating existing iFlow..."
 
-            curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+            curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.version.outputs.version }}')" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"ArtifactContent\": \"$(cat artifact.b64)\"
-              }"
+              -H "Content-Type: application/zip" \
+              --data-binary @artifact.zip
           fi
 
       - name: Deploy iFlow
