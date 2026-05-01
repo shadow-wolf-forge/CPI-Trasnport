@@ -37,27 +37,24 @@ jobs:
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download iFlow ZIP (POSTMAN EXACT MATCH)
+      - name: Download iFlow ZIP (VALID CPI BINARY)
         run: |
-          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
+          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/$value"
 
-          echo "===== REQUEST URL ====="
+          echo "===== DOWNLOAD URL ====="
           echo "$URL"
-
-          echo "===== EXECUTING EXACT POSTMAN EQUIVALENT CALL ====="
 
           curl -L \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip \
+            -w "%{http_code}" \
             "$URL"
 
+          echo ""
           echo "===== FILE VALIDATION ====="
           file artifact.zip
 
-          echo "===== SAMPLE BYTES ====="
-          head -c 200 artifact.zip | xxd
-
-      - name: Save into repo
+      - name: Save backup
         run: |
           mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
           cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
@@ -92,27 +89,29 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-      - name: Convert ZIP → Base64
-        id: encode
+      - name: Convert ZIP → Base64 (SAFE FILE MODE)
         run: |
-          BASE64_CONTENT=$(base64 artifact.zip | tr -d '\n')
+          base64 artifact.zip | tr -d '\n' > artifact.b64
 
-          echo "===== FULL BASE64 OUTPUT START ====="
-          echo "$BASE64_CONTENT"
-          echo "===== FULL BASE64 OUTPUT END ====="
-
-          echo "content=$BASE64_CONTENT" >> $GITHUB_OUTPUT
+          echo "===== BASE64 PREVIEW ====="
+          head -c 200 artifact.b64
+          echo ""
 
       - name: Build Payload
         run: |
+          ARTIFACT_B64=$(cat artifact.b64)
+
           cat <<EOF > payload.json
           {
             "Name": "${{ github.event.inputs.iflow_id }}",
             "Id": "${{ github.event.inputs.iflow_id }}",
             "PackageId": "${{ github.event.inputs.package_id }}",
-            "ArtifactContent": "${{ steps.encode.outputs.content }}"
+            "ArtifactContent": "$ARTIFACT_B64"
           }
           EOF
+
+          echo "===== PAYLOAD READY ====="
+          ls -lh payload.json
 
       - name: Upload iFlow (PUT Base64 JSON)
         run: |
