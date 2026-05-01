@@ -27,27 +27,43 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get Source OAuth Token
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Get Source OAuth Token (WORKING METHOD)
         id: source_token
         run: |
-          TOKEN=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
-            -d "grant_type=client_credentials" \
-            -u "${{ secrets.SOURCE_CLIENT_ID }}:${{ secrets.SOURCE_CLIENT_SECRET }}" \
-            | jq -r .access_token)
+          RESPONSE=$(curl -s \
+            "https://f2187e55trial.authentication.us10.hana.ondemand.com/oauth/token?grant_type=client_credentials" \
+            --header "Authorization: ${{ secrets.SRC_TOKEN_BASIC }}")
+
+          echo "=== TOKEN RESPONSE ==="
+          echo "$RESPONSE"
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
+
+          if [ -z "$TOKEN" ]; then
+            echo "TOKEN FETCH FAILED"
+            exit 1
+          fi
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
+          echo "=== TOKEN EXTRACTED ==="
+          echo "${TOKEN:0:20}...${TOKEN: -20}"
+
       - name: Download iFlow ZIP (VALID CPI BINARY)
         run: |
-          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/$value"
+          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
 
           echo "===== DOWNLOAD URL ====="
           echo "$URL"
 
-          curl -L \
+          curl -L --fail --silent --show-error \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip \
-            -w "%{http_code}" \
             "$URL"
 
           echo ""
@@ -118,7 +134,5 @@ jobs:
           curl -v -X PUT \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
-            -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
             -H "Content-Type: application/json" \
             --data @payload.json
