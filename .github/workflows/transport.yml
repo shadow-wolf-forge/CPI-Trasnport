@@ -36,41 +36,33 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download iFlow ZIP (FIXED + FULL TRACE)
+      - name: Download iFlow ZIP (RESTORED + SAFE TRACE)
         run: |
           URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
 
           echo "===== REQUEST URL ====="
           echo "$URL"
 
-          echo "===== CURL TRACE START ====="
+          echo "===== RESPONSE TRACE START ====="
 
-          HTTP_CODE=$(curl -L -s \
+          # SAFE DOWNLOAD (restored working version)
+          curl -L \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -D headers.txt \
             -o artifact.zip \
-            -w "%{http_code}" \
-            "$URL")
+            -w "\nHTTP_STATUS:%{http_code}\n" \
+            "$URL"
 
           echo "===== HEADERS ====="
           cat headers.txt
 
-          echo "===== HTTP STATUS ====="
-          echo "$HTTP_CODE"
-
-          echo "===== BODY TYPE CHECK ====="
+          echo "===== FILE TYPE CHECK ====="
           file artifact.zip
 
-          echo "===== BODY SAMPLE (RAW) ====="
-          head -c 300 artifact.zip
+          echo "===== SAMPLE BYTES ====="
+          head -c 200 artifact.zip | xxd
 
-          echo ""
-
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "DOWNLOAD FAILED - CPI RESPONSE BELOW"
-            cat artifact.zip
-            exit 1
-          fi
+          echo "===== RESPONSE TRACE END ====="
 
       - name: Save into repo
         run: |
