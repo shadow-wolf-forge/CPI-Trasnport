@@ -80,7 +80,7 @@ jobs:
       # ✅ FINAL WORKING UPLOAD
       - name: Upload to Target CPI
         run: |
-          curl -f -X PUT \
+          curl -f -X POST \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.resolve_version.outputs.version }}')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "Content-Type: application/zip" \
