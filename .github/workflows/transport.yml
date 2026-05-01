@@ -67,7 +67,7 @@ jobs:
         run: |
           curl -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "Content-Type: application/zip" \
+            -H "Content-Type: multipart/form-data" \
             --data-binary @artifact.zip
 
       - name: Deploy iFlow
