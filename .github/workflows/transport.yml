@@ -34,27 +34,24 @@ jobs:
             -d "grant_type=client_credentials" \
             -u "${{ secrets.SOURCE_CLIENT_ID }}:${{ secrets.SOURCE_CLIENT_SECRET }}" \
             | jq -r .access_token)
+
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download iFlow ZIP (FIXED Accept-Encoding)
+      - name: Download iFlow ZIP (POSTMAN EXACT MATCH)
         run: |
           URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
 
           echo "===== REQUEST URL ====="
           echo "$URL"
 
+          echo "===== EXECUTING EXACT POSTMAN EQUIVALENT CALL ====="
+
           curl -L \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
-            -H "Accept-Encoding: gzip, deflate" \
-            -D headers.txt \
             -o artifact.zip \
-            -w "\nHTTP_STATUS:%{http_code}\n" \
             "$URL"
 
-          echo "===== HEADERS ====="
-          cat headers.txt
-
-          echo "===== FILE TYPE CHECK ====="
+          echo "===== FILE VALIDATION ====="
           file artifact.zip
 
           echo "===== SAMPLE BYTES ====="
@@ -81,6 +78,7 @@ jobs:
             -d "grant_type=client_credentials" \
             -u "${{ secrets.TARGET_CLIENT_ID }}:${{ secrets.TARGET_CLIENT_SECRET }}" \
             | jq -r .access_token)
+
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
       - name: Fetch CSRF
