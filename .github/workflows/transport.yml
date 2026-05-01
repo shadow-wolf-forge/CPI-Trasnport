@@ -40,12 +40,19 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
+      # ✅ FORCE FAIL IF DOWNLOAD FAILS
       - name: Download iFlow ZIP
         run: |
-          curl -X GET \
+          curl -f -X GET \
             "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip
+
+      # ✅ VALIDATE FILE IS REAL ZIP
+      - name: Validate ZIP
+        run: |
+          file artifact.zip
+          unzip -t artifact.zip
 
       - name: Save into repo
         run: |
@@ -70,25 +77,25 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ BASE64 ENCODE
+      # ✅ CORRECT BASE64 ENCODE
       - name: Encode ZIP to Base64
         id: base64
         run: |
           BASE64=$(base64 -w 0 artifact.zip)
           echo "content=$BASE64" >> $GITHUB_OUTPUT
 
-      # ✅ CREATE / UPDATE IFLOW USING JSON (LIKE YOUR GROOVY)
+      # ✅ SEND REAL CONTENT (NOT "Bad Request")
       - name: Upload iFlow via JSON API
         run: |
           curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "Name": "${{ github.event.inputs.name }}",
-              "Id": "${{ github.event.inputs.iflow_id }}",
-              "PackageId": "${{ github.event.inputs.package_id }}",
-              "ArtifactContent": "${{ steps.base64.outputs.content }}"
-            }'
+            -d "{
+              \"Name\": \"${{ github.event.inputs.name }}\",
+              \"Id\": \"${{ github.event.inputs.iflow_id }}\",
+              \"PackageId\": \"${{ github.event.inputs.package_id }}\",
+              \"ArtifactContent\": \"${{ steps.base64.outputs.content }}\"
+            }"
 
       - name: Deploy iFlow
         run: |
