@@ -34,21 +34,23 @@ jobs:
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Build CPI Download URL (ENCODED)
+      - name: Build CPI URL (FIXED)
         id: build_url
         run: |
           ID="${{ github.event.inputs.iflow_id }}"
           VERSION="${{ github.event.inputs.version }}"
 
-          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id=%27${ID}%27,Version=%27${VERSION}%27)/\$value"
+          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id=%27${ID}%27,Version=%27${VERSION}%27)/%24value"
 
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - name: Download Artifact
+      - name: Debug URL
         run: |
           echo "FINAL URL:"
           echo "${{ steps.build_url.outputs.url }}"
 
+      - name: Download Artifact
+        run: |
           curl --location --fail --silent --show-error \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip \
