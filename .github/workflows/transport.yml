@@ -1,4 +1,4 @@
-name: CPI Transport + Backup
+name: Transport Integration Flows
 
 on:
   workflow_dispatch:
@@ -68,10 +68,10 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add .
+          git add . || true
           git diff --cached --quiet || git commit -m "Backup ${{ github.event.inputs.iflow_id }} - $(date)"
-          git pull --rebase origin main
-          git push origin main
+          git pull --rebase origin main || true
+          git push origin main || true
 
       - name: Get Target OAuth Token
         id: target_token
@@ -79,9 +79,6 @@ jobs:
           RESPONSE=$(curl -s \
             "${{ secrets.TGT_TOKEN_URL }}" \
             --header "Authorization: ${{ secrets.TGT_TOKEN_BASIC }}")
-
-          echo "=== TARGET RESPONSE ==="
-          echo "$RESPONSE"
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
 
@@ -91,6 +88,24 @@ jobs:
           fi
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Check iFlow Exists in Target
+        id: check_iflow
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
+
+          echo "HTTP_STATUS=$STATUS"
+
+          if [ "$STATUS" = "200" ]; then
+            echo "mode=PUT" >> $GITHUB_OUTPUT
+          elif [ "$STATUS" = "404" ]; then
+            echo "mode=POST" >> $GITHUB_OUTPUT
+          else
+            echo "Unexpected status: $STATUS"
+            exit 1
+          fi
 
       - name: Fetch CSRF
         id: csrf
@@ -120,12 +135,26 @@ jobs:
           }
           EOF
 
-      - name: Upload iFlow
+      - name: Upload iFlow (PUT or POST)
         run: |
-          curl -X PUT \
-            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
-            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
-            -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-            -H "Content-Type: application/json" \
-            --data @payload.json
+          MODE="${{ steps.check_iflow.outputs.mode }}"
+
+          URL="${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
+
+          if [ "$MODE" = "PUT" ]; then
+            curl -X PUT \
+              "$URL" \
+              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
+              -H "Content-Type: application/json" \
+              --data @payload.json
+          else
+            curl -X POST \
+              "$URL" \
+              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
+              -H "Content-Type: application/json" \
+              --data @payload.json
+          fi
