@@ -96,7 +96,7 @@ jobs:
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
 
-          echo "HTTP_STATUS=$STATUS"
+          echo "status=$STATUS"
 
           if [ "$STATUS" = "200" ]; then
             echo "mode=PUT" >> $GITHUB_OUTPUT
@@ -139,11 +139,9 @@ jobs:
         run: |
           MODE="${{ steps.check_iflow.outputs.mode }}"
 
-          URL="${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
-
           if [ "$MODE" = "PUT" ]; then
             curl -X PUT \
-              "$URL" \
+              "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
@@ -151,7 +149,7 @@ jobs:
               --data @payload.json
           else
             curl -X POST \
-              "$URL" \
+              "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
