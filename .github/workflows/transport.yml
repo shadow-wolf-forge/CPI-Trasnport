@@ -36,12 +36,39 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download iFlow ZIP
+      - name: Download iFlow ZIP (FULL TRACE)
         run: |
-          curl -X GET \
-            "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
+          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
+
+          echo "===== REQUEST URL ====="
+          echo "$URL"
+
+          echo "===== RESPONSE TRACE ====="
+
+          HTTP_CODE=$(curl -s -L \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
-            -o artifact.zip
+            -D headers.txt \
+            -o artifact.zip \
+            -w "%{http_code}" \
+            "$URL")
+
+          echo "===== HEADERS ====="
+          cat headers.txt
+
+          echo "===== HTTP STATUS ====="
+          echo "$HTTP_CODE"
+
+          echo "===== FILE CHECK ====="
+          file artifact.zip
+
+          echo "===== SAMPLE BYTES ====="
+          head -c 200 artifact.zip | xxd
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Download failed"
+            cat artifact.zip
+            exit 1
+          fi
 
       - name: Save into repo
         run: |
@@ -77,22 +104,18 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-      - name: Convert ZIP → Base64 (SAFE STREAM MODE)
+      - name: Convert ZIP → Base64
         id: encode
         run: |
-          echo "Encoding ZIP safely..."
-
           BASE64_CONTENT=$(base64 artifact.zip | tr -d '\n')
 
-          echo "Base64 length:"
-          echo "${#BASE64_CONTENT}"
-
-          echo "Writing debug preview..."
-          echo "$BASE64_CONTENT" | head -c 120
+          echo "===== FULL BASE64 OUTPUT START ====="
+          echo "$BASE64_CONTENT"
+          echo "===== FULL BASE64 OUTPUT END ====="
 
           echo "content=$BASE64_CONTENT" >> $GITHUB_OUTPUT
 
-      - name: Build Payload (Base64 verified)
+      - name: Build Payload
         run: |
           cat <<EOF > payload.json
           {
@@ -106,8 +129,8 @@ jobs:
           echo "===== REQUEST URL ====="
           echo "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
 
-          echo "===== REQUEST BODY (TRUNCATED SAFE VIEW) ====="
-          head -c 300 payload.json
+          echo "===== REQUEST BODY ====="
+          cat payload.json
 
       - name: Upload iFlow (PUT Base64 JSON)
         run: |
