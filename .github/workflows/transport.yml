@@ -1,0 +1,75 @@
+name: CPI Transport + Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      iflow_id:
+        description: "Integration Flow ID"
+        required: true
+      version:
+        description: "Version (or active)"
+        required: true
+        default: "active"
+
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get Source OAuth Token
+        id: source_token
+        run: |
+          TOKEN=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
+            -d "grant_type=client_credentials" \
+            -u "${{ secrets.SOURCE_CLIENT_ID }}:${{ secrets.SOURCE_CLIENT_SECRET }}" \
+            | jq -r .access_token)
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Download iFlow ZIP
+        run: |
+          curl -X GET \
+            "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
+            -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
+            -o artifact.zip
+
+      - name: Save into repo
+        run: |
+          mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
+          cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
+
+      - name: Commit to GitHub
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Backup iFlow ${{ github.event.inputs.iflow_id }}"
+          git push
+
+      - name: Get Target OAuth Token
+        id: target_token
+        run: |
+          TOKEN=$(curl -s -X POST "${{ secrets.TARGET_TOKEN_URL }}" \
+            -d "grant_type=client_credentials" \
+            -u "${{ secrets.TARGET_CLIENT_ID }}:${{ secrets.TARGET_CLIENT_SECRET }}" \
+            | jq -r .access_token)
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Upload to Target CPI
+        run: |
+          curl -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+            -H "Content-Type: application/zip" \
+            --data-binary @artifact.zip
+
+      - name: Deploy iFlow
+        run: |
+          curl -X POST "${{ secrets.TARGET_API_URL }}/api/v1/DeployIntegrationDesigntimeArtifact" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "Id": "${{ github.event.inputs.iflow_id }}",
+              "Version": "active"
+            }'
