@@ -66,10 +66,6 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Encode ZIP to Base64
-        run: |
-          base64 artifact.zip | tr -d '\n' > artifact.b64
-
       - name: Fetch CSRF
         id: csrf
         run: |
@@ -93,31 +89,26 @@ jobs:
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
 
-      - name: Upload iFlow (ATOM XML JSON Payload)
+      - name: Upload iFlow
         run: |
-          cat <<EOF > payload.json
-          {
-            "Name": "${{ github.event.inputs.iflow_id }}",
-            "Id": "${{ github.event.inputs.iflow_id }}",
-            "PackageId": "${{ github.event.inputs.package_id }}",
-            "ArtifactContent": "$(cat artifact.b64)"
-          }
-          EOF
-
           if [ "${{ steps.check.outputs.status }}" = "404" ]; then
             curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
-              --data @payload.json
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @artifact.zip \
+              -G \
+              --data-urlencode "Id=${{ github.event.inputs.iflow_id }}" \
+              --data-urlencode "Name=${{ github.event.inputs.iflow_id }}" \
+              --data-urlencode "PackageId=${{ github.event.inputs.package_id }}"
           else
             curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
-              --data @payload.json
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @artifact.zip
           fi
 
       - name: Deploy iFlow
