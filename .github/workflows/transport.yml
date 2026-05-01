@@ -36,22 +36,22 @@ jobs:
         id: source_token
         run: |
           RESPONSE=$(curl -s \
-            "https://f2187e55trial.authentication.us10.hana.ondemand.com/oauth/token?grant_type=client_credentials" \
+            "${{ secrets.SOURCE_TOKEN_URL }}?grant_type=client_credentials" \
             --header "Authorization: ${{ secrets.SRC_TOKEN_BASIC }}")
 
-          echo "=== TOKEN RESPONSE ==="
+          echo "=== SOURCE TOKEN RESPONSE ==="
           echo "$RESPONSE"
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
 
           if [ -z "$TOKEN" ]; then
-            echo "TOKEN FETCH FAILED"
+            echo "SOURCE TOKEN FETCH FAILED"
             exit 1
           fi
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-          echo "=== TOKEN EXTRACTED ==="
+          echo "=== SOURCE TOKEN EXTRACTED ==="
           echo "${TOKEN:0:20}...${TOKEN: -20}"
 
       - name: Download iFlow ZIP (VALID CPI BINARY)
@@ -66,7 +66,6 @@ jobs:
             -o artifact.zip \
             "$URL"
 
-          echo ""
           echo "===== FILE VALIDATION ====="
           file artifact.zip
 
@@ -84,15 +83,27 @@ jobs:
           git pull --rebase origin main
           git push origin main
 
-      - name: Get Target OAuth Token
+      - name: Get Target OAuth Token (WORKING METHOD)
         id: target_token
         run: |
-          TOKEN=$(curl -s -X POST "${{ secrets.TARGET_TOKEN_URL }}" \
-            -d "grant_type=client_credentials" \
-            -u "${{ secrets.TARGET_CLIENT_ID }}:${{ secrets.TARGET_CLIENT_SECRET }}" \
-            | jq -r .access_token)
+          RESPONSE=$(curl -s \
+            "${{ secrets.TGT_TOKEN_URL }}?grant_type=client_credentials" \
+            --header "Authorization: ${{ secrets.TGT_TOKEN_BASIC }}")
+
+          echo "=== TARGET TOKEN RESPONSE ==="
+          echo "$RESPONSE"
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
+
+          if [ -z "$TOKEN" ]; then
+            echo "TARGET TOKEN FETCH FAILED"
+            exit 1
+          fi
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+          echo "=== TARGET TOKEN EXTRACTED ==="
+          echo "${TOKEN:0:20}...${TOKEN: -20}"
 
       - name: Fetch CSRF
         id: csrf
@@ -134,5 +145,7 @@ jobs:
           curl -v -X PUT \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+            -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+            -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
             -H "Content-Type: application/json" \
             --data @payload.json
