@@ -90,10 +90,9 @@ jobs:
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
 
-      - name: Upload iFlow (JSON Base64)
+      - name: Upload iFlow (ATOM XML JSON Payload)
         run: |
-          if [ "${{ steps.check.outputs.status }}" = "404" ]; then
-            cat <<EOF > payload.json
+          cat <<EOF > payload.json
           {
             "Name": "${{ github.event.inputs.iflow_id }}",
             "Id": "${{ github.event.inputs.iflow_id }}",
@@ -102,26 +101,19 @@ jobs:
           }
           EOF
 
-            curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
+          if [ "${{ steps.check.outputs.status }}" = "404" ]; then
+            curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/json" \
+              -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
               --data @payload.json
-
           else
-            cat <<EOF > payload.json
-          {
-            "Name": "${{ github.event.inputs.iflow_id }}",
-            "ArtifactContent": "$(cat artifact.b64)"
-          }
-          EOF
-
             curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/json" \
+              -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
               --data @payload.json
           fi
 
