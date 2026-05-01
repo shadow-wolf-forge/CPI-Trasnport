@@ -77,32 +77,7 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-      - name: Check iFlow Existence (GET - Authorization Only)
-        id: check
-        run: |
-          URL="${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
-
-          echo "GET $URL"
-
-          HTTP_RESPONSE=$(curl -s \
-            -w "%{http_code}" \
-            -o body.txt \
-            "$URL" \
-            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
-
-          echo "===== RESPONSE BODY ====="
-          cat body.txt
-
-          echo "HTTP STATUS: $HTTP_RESPONSE"
-
-          if [ "$HTTP_RESPONSE" != "404" ] && [ "$HTTP_RESPONSE" != "200" ]; then
-            echo "CPI error - stopping pipeline"
-            exit 1
-          fi
-
-          echo "status=$HTTP_RESPONSE" >> $GITHUB_OUTPUT
-
-      - name: Upload iFlow (ATOM XML JSON Payload)
+      - name: Upload iFlow (PUT Only)
         run: |
           cat <<EOF > payload.json
           {
@@ -113,21 +88,12 @@ jobs:
           }
           EOF
 
-          if [ "${{ steps.check.outputs.status }}" = "404" ]; then
-            curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
-              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
-              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
-              --data @payload.json
-          else
-            curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
-              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
-              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
-              --data @payload.json
-          fi
+          curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+            -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+            -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
+            -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
+            --data @payload.json
 
       - name: Deploy iFlow
         run: |
