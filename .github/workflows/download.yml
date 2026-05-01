@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       iflow_id:
+        description: "Integration Flow ID"
         required: true
-        description: Integration Flow ID
       version:
+        description: "Version (or active)"
         required: true
-        default: active
-        description: Version
+        default: "active"
 
 permissions:
   contents: read
@@ -19,8 +19,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get Token
-        id: token
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Get Source OAuth Token
+        id: source_token
         run: |
           TOKEN=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
             -d "grant_type=client_credentials" \
@@ -29,32 +34,38 @@ jobs:
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download Artifact
+      - name: Build CPI URL
+        id: build_url
         run: |
           ID="${{ github.event.inputs.iflow_id }}"
           VERSION="${{ github.event.inputs.version }}"
 
-          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='$ID',Version='$VERSION')/\$value"
+          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${ID}',Version='${VERSION}')/\$value"
 
-          ENCODED_URL=$(python3 - <<EOF
-import urllib.parse
-print(urllib.parse.quote("""$URL""", safe=":/?=&()$,'"))
-EOF
-)
+          echo "url=$URL" >> $GITHUB_OUTPUT
 
-          curl -L --fail --silent --show-error \
-            -H "Authorization: Bearer ${{ steps.token.outputs.token }}" \
+      - name: Download Artifact (RAW DEBUG MODE)
+        run: |
+          echo "FINAL URL:"
+          echo "${{ steps.build_url.outputs.url }}"
+
+          curl -v -L \
+            -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip \
-            "$ENCODED_URL"
+            "${{ steps.build_url.outputs.url }}"
 
+          echo "FILE CHECK:"
           file artifact.zip
 
-      - name: Convert Base64
+      - name: Convert to Base64
         run: |
           base64 artifact.zip | tr -d '\n' > artifact.b64
 
-      - name: Show Output
+      - name: Show Base64 Output
         run: |
+          echo "SIZE:"
           wc -c artifact.b64
+
+          echo "PREVIEW:"
           head -c 300 artifact.b64
-          echo ""```
+          echo ""
