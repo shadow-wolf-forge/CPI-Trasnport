@@ -40,7 +40,7 @@ jobs:
           ID="${{ github.event.inputs.iflow_id }}"
           VERSION="${{ github.event.inputs.version }}"
 
-          URL="https://f2187e55trial.it-cpitrial06.cfapps.us10-001.hana.ondemand.com:443/api/v1/IntegrationDesigntimeArtifacts(Id='WildCraft_To_RE_OrdersCreate_And_Update',Version='active')/$value"
+          URL="https://f2187e55trial.it-cpitrial06.cfapps.us10-001.hana.ondemand.com:443/api/v1/IntegrationDesigntimeArtifacts(Id='WildCraft_To_RE_OrdersCreate_And_Update',Version='active')/\$value"
 
           echo "url=$URL" >> $GITHUB_OUTPUT
 
