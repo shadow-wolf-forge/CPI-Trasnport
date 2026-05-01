@@ -37,7 +37,7 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ KEEPING YOUR ORIGINAL DOWNLOAD (UNCHANGED)
+      # ✅ DO NOT TOUCH (your working download)
       - name: Download iFlow ZIP
         run: |
           curl -X GET \
@@ -68,41 +68,74 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ BASE64 + JSON + CSRF FIXED UPLOAD
-      - name: Upload iFlow (Base64 JSON with CSRF)
+      # ✅ Encode base64
+      - name: Encode ZIP
         run: |
-          # Encode ZIP without line breaks
           base64 -w 0 artifact.zip > artifact.b64
 
-          # Build payload JSON safely
-          jq -n \
-            --arg name "${{ github.event.inputs.iflow_id }}" \
-            --arg id "${{ github.event.inputs.iflow_id }}" \
-            --arg package "${{ github.event.inputs.package_id }}" \
-            --rawfile content artifact.b64 \
-            '{
-              Name: $name,
-              Id: $id,
-              PackageId: $package,
-              ArtifactContent: $content
-            }' > payload.json
-
-          # Fetch CSRF token and session cookie
+      # ✅ Fetch CSRF + Cookie
+      - name: Fetch CSRF
+        id: csrf
+        run: |
           curl -s -D headers.txt -o /dev/null \
-            -X GET "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
+            -X GET "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "X-CSRF-Token: Fetch"
 
           TOKEN=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')
           COOKIE=$(grep -i set-cookie headers.txt | cut -d' ' -f2 | tr -d '\r')
 
-          # Upload using POST
-          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
-            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "X-CSRF-Token: $TOKEN" \
-            -H "Cookie: $COOKIE" \
-            -H "Content-Type: application/json" \
-            --data @payload.json
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+          echo "cookie=$COOKIE" >> $GITHUB_OUTPUT
+
+      # ✅ Check if iFlow exists
+      - name: Check Artifact Exists
+        id: check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
+
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+
+      # ✅ Create payload JSON
+      - name: Create Payload
+        run: |
+          jq -n \
+            --arg content "$(cat artifact.b64)" \
+            '{
+              ArtifactContent: $content
+            }' > payload.json
+
+      # ✅ POST or PUT based on existence
+      - name: Upload iFlow (POST/PUT)
+        run: |
+          if [ "${{ steps.check.outputs.status }}" = "404" ]; then
+            echo "Creating new iFlow..."
+
+            curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
+              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"Id\": \"${{ github.event.inputs.iflow_id }}\",
+                \"PackageId\": \"${{ github.event.inputs.package_id }}\",
+                \"ArtifactContent\": \"$(cat artifact.b64)\"
+              }"
+
+          else
+            echo "Updating existing iFlow..."
+
+            curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"ArtifactContent\": \"$(cat artifact.b64)\"
+              }"
+          fi
 
       - name: Deploy iFlow
         run: |
