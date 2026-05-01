@@ -34,27 +34,22 @@ jobs:
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Build CPI URL (FIXED)
-        id: build_url
+      - name: Download Artifact (SAFE QUERY MODE)
         run: |
           ID="${{ github.event.inputs.iflow_id }}"
           VERSION="${{ github.event.inputs.version }}"
 
-          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id=%27${ID}%27,Version=%27${VERSION}%27)/%24value"
+          BASE_URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts"
 
-          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Calling CPI safely..."
 
-      - name: Debug URL
-        run: |
-          echo "FINAL URL:"
-          echo "${{ steps.build_url.outputs.url }}"
-
-      - name: Download Artifact
-        run: |
-          curl --location --fail --silent --show-error \
+          curl -L --fail --silent --show-error \
+            -G "$BASE_URL" \
+            --data-urlencode "Id=$ID" \
+            --data-urlencode "Version=$VERSION" \
+            --data-urlencode "\$format=zip" \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
-            -o artifact.zip \
-            "${{ steps.build_url.outputs.url }}"
+            -o artifact.zip
 
           file artifact.zip
 
@@ -62,7 +57,7 @@ jobs:
         run: |
           base64 artifact.zip | tr -d '\n' > artifact.b64
 
-      - name: Show Base64 Output
+      - name: Show Output
         run: |
           echo "SIZE:"
           wc -c artifact.b64
