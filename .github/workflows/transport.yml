@@ -32,11 +32,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Get Source OAuth Token (WORKING METHOD)
+      - name: Get Source OAuth Token
         id: source_token
         run: |
           RESPONSE=$(curl -s \
-            "${{ secrets.SOURCE_TOKEN_URL }}?grant_type=client_credentials" \
+            "${{ secrets.SRC_TOKEN_URL }}" \
             --header "Authorization: ${{ secrets.SRC_TOKEN_BASIC }}")
 
           echo "=== SOURCE TOKEN RESPONSE ==="
@@ -45,20 +45,17 @@ jobs:
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
 
           if [ -z "$TOKEN" ]; then
-            echo "SOURCE TOKEN FETCH FAILED"
+            echo "SOURCE TOKEN FAILED"
             exit 1
           fi
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-          echo "=== SOURCE TOKEN EXTRACTED ==="
-          echo "${TOKEN:0:20}...${TOKEN: -20}"
-
-      - name: Download iFlow ZIP (VALID CPI BINARY)
+      - name: Download iFlow ZIP
         run: |
           URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
 
-          echo "===== DOWNLOAD URL ====="
+          echo "DOWNLOAD URL:"
           echo "$URL"
 
           curl -L --fail --silent --show-error \
@@ -66,10 +63,9 @@ jobs:
             -o artifact.zip \
             "$URL"
 
-          echo "===== FILE VALIDATION ====="
           file artifact.zip
 
-      - name: Save backup
+      - name: Save Backup
         run: |
           mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
           cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
@@ -83,11 +79,11 @@ jobs:
           git pull --rebase origin main
           git push origin main
 
-      - name: Get Target OAuth Token (WORKING METHOD)
+      - name: Get Target OAuth Token
         id: target_token
         run: |
           RESPONSE=$(curl -s \
-            "${{ secrets.TGT_TOKEN_URL }}?grant_type=client_credentials" \
+            "${{ secrets.TGT_TOKEN_URL }}" \
             --header "Authorization: ${{ secrets.TGT_TOKEN_BASIC }}")
 
           echo "=== TARGET TOKEN RESPONSE ==="
@@ -96,14 +92,11 @@ jobs:
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
 
           if [ -z "$TOKEN" ]; then
-            echo "TARGET TOKEN FETCH FAILED"
+            echo "TARGET TOKEN FAILED"
             exit 1
           fi
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
-
-          echo "=== TARGET TOKEN EXTRACTED ==="
-          echo "${TOKEN:0:20}...${TOKEN: -20}"
 
       - name: Fetch CSRF
         id: csrf
@@ -116,13 +109,9 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-      - name: Convert ZIP → Base64 (SAFE FILE MODE)
+      - name: Convert ZIP → Base64
         run: |
           base64 artifact.zip | tr -d '\n' > artifact.b64
-
-          echo "===== BASE64 PREVIEW ====="
-          head -c 200 artifact.b64
-          echo ""
 
       - name: Build Payload
         run: |
@@ -137,10 +126,7 @@ jobs:
           }
           EOF
 
-          echo "===== PAYLOAD READY ====="
-          ls -lh payload.json
-
-      - name: Upload iFlow (PUT Base64 JSON)
+      - name: Upload iFlow
         run: |
           curl -v -X PUT \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
