@@ -36,16 +36,16 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download iFlow ZIP (FULL TRACE)
+      - name: Download iFlow ZIP (FIXED + FULL TRACE)
         run: |
           URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
 
           echo "===== REQUEST URL ====="
           echo "$URL"
 
-          echo "===== RESPONSE TRACE ====="
+          echo "===== CURL TRACE START ====="
 
-          HTTP_CODE=$(curl -s -L \
+          HTTP_CODE=$(curl -L -s \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -D headers.txt \
             -o artifact.zip \
@@ -58,14 +58,16 @@ jobs:
           echo "===== HTTP STATUS ====="
           echo "$HTTP_CODE"
 
-          echo "===== FILE CHECK ====="
+          echo "===== BODY TYPE CHECK ====="
           file artifact.zip
 
-          echo "===== SAMPLE BYTES ====="
-          head -c 200 artifact.zip | xxd
+          echo "===== BODY SAMPLE (RAW) ====="
+          head -c 300 artifact.zip
+
+          echo ""
 
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "Download failed"
+            echo "DOWNLOAD FAILED - CPI RESPONSE BELOW"
             cat artifact.zip
             exit 1
           fi
@@ -125,12 +127,6 @@ jobs:
             "ArtifactContent": "${{ steps.encode.outputs.content }}"
           }
           EOF
-
-          echo "===== REQUEST URL ====="
-          echo "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
-
-          echo "===== REQUEST BODY ====="
-          cat payload.json
 
       - name: Upload iFlow (PUT Base64 JSON)
         run: |
