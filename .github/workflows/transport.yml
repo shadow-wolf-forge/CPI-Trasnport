@@ -36,18 +36,16 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download iFlow ZIP (RESTORED + SAFE TRACE)
+      - name: Download iFlow ZIP (FIXED Accept-Encoding)
         run: |
           URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
 
           echo "===== REQUEST URL ====="
           echo "$URL"
 
-          echo "===== RESPONSE TRACE START ====="
-
-          # SAFE DOWNLOAD (restored working version)
           curl -L \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
+            -H "Accept-Encoding: gzip, deflate" \
             -D headers.txt \
             -o artifact.zip \
             -w "\nHTTP_STATUS:%{http_code}\n" \
@@ -61,8 +59,6 @@ jobs:
 
           echo "===== SAMPLE BYTES ====="
           head -c 200 artifact.zip | xxd
-
-          echo "===== RESPONSE TRACE END ====="
 
       - name: Save into repo
         run: |
