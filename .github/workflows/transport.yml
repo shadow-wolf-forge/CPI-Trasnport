@@ -77,18 +77,30 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-      - name: Upload iFlow (PUT Only)
+      - name: Encode Artifact to Base64
+        id: encode
+        run: |
+          BASE64_CONTENT=$(base64 artifact.zip | tr -d '\n')
+          echo "content=$BASE64_CONTENT" >> $GITHUB_OUTPUT
+
+      - name: Upload iFlow (PUT with TRACE OUTPUT)
         run: |
           cat <<EOF > payload.json
           {
             "Name": "${{ github.event.inputs.iflow_id }}",
             "Id": "${{ github.event.inputs.iflow_id }}",
             "PackageId": "${{ github.event.inputs.package_id }}",
-            "ArtifactContent": "$(base64 artifact.zip | tr -d '\n')"
+            "ArtifactContent": "${{ steps.encode.outputs.content }}"
           }
           EOF
 
-          curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+          echo "===== REQUEST URL ====="
+          echo "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
+
+          echo "===== REQUEST BODY ====="
+          cat payload.json
+
+          curl -v -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
             -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
