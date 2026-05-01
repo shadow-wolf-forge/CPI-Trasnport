@@ -4,13 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       iflow_id:
-        description: "Integration Flow ID"
-        required: true
-      package_id:
-        description: "Package ID"
         required: true
       version:
-        description: "Version (or active)"
         required: true
         default: "active"
 
@@ -22,13 +17,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          persist-credentials: true
           fetch-depth: 0
 
-      - name: Get Source OAuth Token
+      - name: Get Source Token
         id: source_token
         run: |
           TOKEN=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
@@ -37,29 +30,28 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ KEEPING YOUR ORIGINAL DOWNLOAD (UNCHANGED)
-      - name: Download iFlow ZIP
+      - name: Download iFlow
         run: |
           curl -X GET \
             "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip
 
-      - name: Save into repo
+      - name: Save Backup
         run: |
           mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
           cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
 
-      - name: Commit to GitHub (safe)
+      - name: Commit
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git diff --cached --quiet || git commit -m "Backup iFlow ${{ github.event.inputs.iflow_id }} - $(date)"
+          git diff --cached --quiet || git commit -m "Backup ${{ github.event.inputs.iflow_id }}"
           git pull --rebase origin main
-          git push origin main
+          git push
 
-      - name: Get Target OAuth Token
+      - name: Get Target Token
         id: target_token
         run: |
           TOKEN=$(curl -s -X POST "${{ secrets.TARGET_TOKEN_URL }}" \
@@ -68,22 +60,19 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ Extract real version from ZIP (CRITICAL)
       - name: Extract Version
         id: version
         run: |
           VERSION=$(unzip -p artifact.zip META-INF/MANIFEST.MF | grep -i "Bundle-Version" | awk '{print $2}')
-          echo "Detected version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # ✅ Fetch CSRF token + cookie
       - name: Fetch CSRF
         id: csrf
         run: |
           curl -s -D headers.txt -o /dev/null \
-            -X GET "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "X-CSRF-Token: Fetch"
+            -H "X-CSRF-Token: Fetch" \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts"
 
           TOKEN=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')
           COOKIE=$(grep -i set-cookie headers.txt | cut -d' ' -f2 | tr -d '\r')
@@ -91,32 +80,24 @@ jobs:
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
           echo "cookie=$COOKIE" >> $GITHUB_OUTPUT
 
-      # ✅ Check if artifact exists
-      - name: Check Artifact Exists
+      - name: Check Exists
         id: check
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.version.outputs.version }}')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
-
           echo "status=$STATUS" >> $GITHUB_OUTPUT
 
-      # ✅ Upload (POST or PUT with correct format)
-      - name: Upload iFlow
+      - name: Upload
         run: |
           if [ "${{ steps.check.outputs.status }}" = "404" ]; then
-            echo "Creating new iFlow..."
-
             curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
               -H "Content-Type: application/zip" \
               --data-binary @artifact.zip
-
           else
-            echo "Updating existing iFlow..."
-
             curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.version.outputs.version }}')" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
@@ -125,9 +106,9 @@ jobs:
               --data-binary @artifact.zip
           fi
 
-      - name: Deploy iFlow
+      - name: Deploy
         run: |
-          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/DeployIntegrationDesigntimeArtifact" \
+          curl -X POST "${{ secrets.TARGET_API_URL }}/api/v1/DeployIntegrationDesigntimeArtifact" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "Content-Type: application/json" \
             -d '{
