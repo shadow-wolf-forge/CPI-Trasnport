@@ -10,6 +10,9 @@ on:
         description: "Version (or active)"
         required: true
         default: "active"
+      package_id:
+        description: "Package ID"
+        required: true
 
 permissions:
   contents: write
@@ -96,7 +99,7 @@ jobs:
           {
             "Name": "${{ github.event.inputs.iflow_id }}",
             "Id": "${{ github.event.inputs.iflow_id }}",
-            "PackageId": "${{ secrets.TARGET_PACKAGE_ID }}",
+            "PackageId": "${{ github.event.inputs.package_id }}",
             "ArtifactContent": "$(cat artifact.b64)"
           }
           EOF
