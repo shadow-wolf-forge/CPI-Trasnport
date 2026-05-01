@@ -1,9 +1,80 @@
-      - name: Upload iFlow (Base64 JSON - FIXED)
+name: CPI Transport + Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      iflow_id:
+        description: "Integration Flow ID"
+        required: true
+      package_id:
+        description: "Package ID"
+        required: true
+      version:
+        description: "Version (or active)"
+        required: true
+        default: "active"
+
+permissions:
+  contents: write
+
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Get Source OAuth Token
+        id: source_token
         run: |
-          # Encode ZIP (no line breaks)
+          TOKEN=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
+            -d "grant_type=client_credentials" \
+            -u "${{ secrets.SOURCE_CLIENT_ID }}:${{ secrets.SOURCE_CLIENT_SECRET }}" \
+            | jq -r .access_token)
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      # ✅ KEEPING YOUR ORIGINAL DOWNLOAD (UNCHANGED)
+      - name: Download iFlow ZIP
+        run: |
+          curl -X GET \
+            "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
+            -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
+            -o artifact.zip
+
+      - name: Save into repo
+        run: |
+          mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
+          cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
+
+      - name: Commit to GitHub
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Backup iFlow ${{ github.event.inputs.iflow_id }} - $(date)"
+          git pull --rebase origin main
+          git push origin main
+
+      - name: Get Target OAuth Token
+        id: target_token
+        run: |
+          TOKEN=$(curl -s -X POST "${{ secrets.TARGET_TOKEN_URL }}" \
+            -d "grant_type=client_credentials" \
+            -u "${{ secrets.TARGET_CLIENT_ID }}:${{ secrets.TARGET_CLIENT_SECRET }}" \
+            | jq -r .access_token)
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      # ✅ BASE64 + JSON + CSRF FIXED UPLOAD
+      - name: Upload iFlow (Base64 JSON with CSRF)
+        run: |
+          # Encode ZIP without line breaks
           base64 -w 0 artifact.zip > artifact.b64
 
-          # Create payload JSON
+          # Build payload JSON safely
           jq -n \
             --arg name "${{ github.event.inputs.iflow_id }}" \
             --arg id "${{ github.event.inputs.iflow_id }}" \
@@ -16,19 +87,29 @@
               ArtifactContent: $content
             }' > payload.json
 
-          # Fetch CSRF token + cookie
-          RESPONSE=$(curl -s -D headers.txt -o /dev/null \
+          # Fetch CSRF token and session cookie
+          curl -s -D headers.txt -o /dev/null \
             -X GET "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "X-CSRF-Token: Fetch")
+            -H "X-CSRF-Token: Fetch"
 
           TOKEN=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')
           COOKIE=$(grep -i set-cookie headers.txt | cut -d' ' -f2 | tr -d '\r')
 
-          # POST with required headers
+          # Upload using POST
           curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "X-CSRF-Token: $TOKEN" \
             -H "Cookie: $COOKIE" \
             -H "Content-Type: application/json" \
             --data @payload.json
+
+      - name: Deploy iFlow
+        run: |
+          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/DeployIntegrationDesigntimeArtifact" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "Id": "${{ github.event.inputs.iflow_id }}",
+              "Version": "active"
+            }'
