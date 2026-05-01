@@ -77,11 +77,13 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-      - name: Check Artifact Exists (STRICT CPI RULE)
+      - name: Check iFlow Existence (CPI OData Standard)
         id: check
         run: |
+          URL="${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
+
           HTTP_RESPONSE=$(curl -s -D headers.txt -o body.txt -w "%{http_code}" \
-            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+            "$URL" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
 
           echo "===== RESPONSE HEADERS ====="
