@@ -52,7 +52,11 @@ jobs:
 
           file package.zip
 
-      - name: Get Target OAuth Token
+      - name: Convert ZIP → Base64
+        run: |
+          base64 package.zip | tr -d '\n' > package.b64
+
+      - name: Get Target Token
         id: target_token
         run: |
           RESPONSE=$(curl -s \
@@ -97,6 +101,17 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
+      - name: Build Payload
+        run: |
+          PACKAGE_B64=$(cat package.b64)
+
+          cat <<EOF > payload.json
+          {
+            "PackageId": "${{ github.event.inputs.package_id }}",
+            "PackageContent": "$PACKAGE_B64"
+          }
+          EOF
+
       - name: Upload Package (PUT or POST)
         run: |
           MODE="${{ steps.check_pkg.outputs.mode }}"
@@ -107,14 +122,14 @@ jobs:
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/zip" \
-              --data-binary @package.zip
+              -H "Content-Type: application/json" \
+              --data @payload.json
           else
             curl -X POST \
               "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationPackages" \
               -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
               -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
               -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-              -H "Content-Type: application/zip" \
-              --data-binary @package.zip
+              -H "Content-Type: application/json" \
+              --data @payload.json
           fi
