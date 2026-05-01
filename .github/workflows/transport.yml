@@ -36,7 +36,7 @@ jobs:
 
       - name: Download iFlow ZIP
         run: |
-          curl -X GET \
+          curl -f -X GET \
             "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip
@@ -46,15 +46,12 @@ jobs:
           mkdir -p artifacts/${{ github.event.inputs.iflow_id }}
           cp artifact.zip artifacts/${{ github.event.inputs.iflow_id }}/artifact_$(date +%s).zip
 
-      # ✅ FIXED COMMIT + PUSH (handles conflicts)
       - name: Commit to GitHub
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-
           git add .
           git diff --cached --quiet || git commit -m "Backup iFlow ${{ github.event.inputs.iflow_id }} - $(date)"
-
           git pull --rebase origin main
           git push origin main
 
@@ -67,12 +64,13 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
+      # ✅ FIXED UPLOAD (this is the important change)
       - name: Upload to Target CPI
         run: |
-          curl -f -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')" \
+          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "Content-Type: application/zip" \
-            --data-binary @artifact.zip
+            -H "Slug: ${{ github.event.inputs.iflow_id }}" \
+            -F "file=@artifact.zip"
 
       - name: Deploy iFlow
         run: |
