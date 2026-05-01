@@ -1,0 +1,120 @@
+name: Transport Integration Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: "Package ID"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  transport_package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Get Source Token
+        id: source_token
+        run: |
+          RESPONSE=$(curl -s \
+            "${{ secrets.SRC_TOKEN_URL }}" \
+            --header "Authorization: ${{ secrets.SRC_TOKEN_BASIC }}")
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
+
+          if [ -z "$TOKEN" ]; then
+            echo "SOURCE TOKEN FAILED"
+            exit 1
+          fi
+
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Download Package
+        run: |
+          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationPackages('${{ github.event.inputs.package_id }}')/\$value"
+
+          curl -L --fail --silent --show-error \
+            -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
+            -o package.zip \
+            "$URL"
+
+          file package.zip
+
+      - name: Get Target OAuth Token
+        id: target_token
+        run: |
+          RESPONSE=$(curl -s \
+            "${{ secrets.TGT_TOKEN_URL }}" \
+            --header "Authorization: ${{ secrets.TGT_TOKEN_BASIC }}")
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
+
+          if [ -z "$TOKEN" ]; then
+            echo "TARGET TOKEN FAILED"
+            exit 1
+          fi
+
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Check Package Exists
+        id: check_pkg
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationPackages('${{ github.event.inputs.package_id }}')" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
+
+          echo "status=$STATUS"
+
+          if [ "$STATUS" = "200" ]; then
+            echo "mode=PUT" >> $GITHUB_OUTPUT
+          elif [ "$STATUS" = "404" ]; then
+            echo "mode=POST" >> $GITHUB_OUTPUT
+          else
+            echo "Unexpected status: $STATUS"
+            exit 1
+          fi
+
+      - name: Fetch CSRF
+        id: csrf
+        run: |
+          curl -s -D headers.txt -o /dev/null \
+            -X GET "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationPackages" \
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+            -H "X-CSRF-Token: Fetch"
+
+          echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
+          echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
+
+      - name: Upload Package (PUT or POST)
+        run: |
+          MODE="${{ steps.check_pkg.outputs.mode }}"
+
+          if [ "$MODE" = "PUT" ]; then
+            curl -X PUT \
+              "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationPackages('${{ github.event.inputs.package_id }}')" \
+              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
+              -H "Content-Type: application/zip" \
+              --data-binary @package.zip
+          else
+            curl -X POST \
+              "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationPackages" \
+              -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
+              -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
+              -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
+              -H "Content-Type: application/zip" \
+              --data-binary @package.zip
+          fi
