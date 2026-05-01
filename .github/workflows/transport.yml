@@ -64,6 +64,7 @@ jobs:
         run: |
           git add .
           git diff --cached --quiet || git commit -m "Backup iFlow ${{ github.event.inputs.iflow_id }} - $(date)"
+          git remote set-url origin https://x-access-token:${{ secrets.PAT }}@github.com/${{ github.repository }}.git
           git push
 
       # -------------------------------
