@@ -1,9 +1,0 @@
-HTTP/1.1 400 Bad Request
-cache-control: no-cache, no-store, must-revalidate
-date: Fri, 01 May 2026 09:39:17 GMT
-x-frame-options: SAMEORIGIN
-x-request-id: 20125b20-ca7a-4f95-61fd-ca050ae6cead
-x-vcap-request-id: 20125b20-ca7a-4f95-61fd-ca050ae6cead
-transfer-encoding: chunked
-strict-transport-security: max-age=31536000; includeSubDomains; preload;
-
