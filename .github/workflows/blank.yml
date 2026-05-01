@@ -1,0 +1,60 @@
+name: CPI Artifact Download Debug
+
+on:
+  workflow_dispatch:
+    inputs:
+      iflow_id:
+        required: true
+        description: Integration Flow ID
+      version:
+        required: true
+        default: active
+        description: Version
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get Token
+        id: token
+        run: |
+          TOKEN=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
+            -d "grant_type=client_credentials" \
+            -u "${{ secrets.SOURCE_CLIENT_ID }}:${{ secrets.SOURCE_CLIENT_SECRET }}" \
+            | jq -r .access_token)
+
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Download Artifact
+        run: |
+          ID="${{ github.event.inputs.iflow_id }}"
+          VERSION="${{ github.event.inputs.version }}"
+
+          URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='$ID',Version='$VERSION')/\$value"
+
+          ENCODED_URL=$(python3 - <<EOF
+import urllib.parse
+print(urllib.parse.quote("""$URL""", safe=":/?=&()$,'"))
+EOF
+)
+
+          curl -L --fail --silent --show-error \
+            -H "Authorization: Bearer ${{ steps.token.outputs.token }}" \
+            -o artifact.zip \
+            "$ENCODED_URL"
+
+          file artifact.zip
+
+      - name: Convert Base64
+        run: |
+          base64 artifact.zip | tr -d '\n' > artifact.b64
+
+      - name: Show Output
+        run: |
+          wc -c artifact.b64
+          head -c 300 artifact.b64
+          echo ""```
