@@ -74,28 +74,30 @@ jobs:
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "X-CSRF-Token: Fetch"
 
-          TOKEN=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')
-          COOKIE=$(grep -i set-cookie headers.txt | cut -d' ' -f2 | tr -d '\r')
+          echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
+          echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
-          echo "cookie=$COOKIE" >> $GITHUB_OUTPUT
-
-      - name: Check Artifact Exists (FULL TRACE)
+      - name: Check Artifact Exists (STRICT CPI RULE)
         id: check
         run: |
-          curl -s -D response_headers.txt -o response_body.txt \
-            -w "%{http_code}" \
+          HTTP_RESPONSE=$(curl -s -D headers.txt -o body.txt -w "%{http_code}" \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
-            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}"
+            -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}")
 
           echo "===== RESPONSE HEADERS ====="
-          cat response_headers.txt
+          cat headers.txt
 
           echo "===== RESPONSE BODY ====="
-          cat response_body.txt
+          cat body.txt
 
-          STATUS=$(tail -n1 response_body.txt || echo "")
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "HTTP STATUS: $HTTP_RESPONSE"
+
+          if [ "$HTTP_RESPONSE" != "404" ] && [ "$HTTP_RESPONSE" != "200" ]; then
+            echo "CPI error - stopping pipeline"
+            exit 1
+          fi
+
+          echo "status=$HTTP_RESPONSE" >> $GITHUB_OUTPUT
 
       - name: Upload iFlow
         run: |
