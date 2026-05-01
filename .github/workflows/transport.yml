@@ -6,8 +6,14 @@ on:
       iflow_id:
         description: "Integration Flow ID"
         required: true
+      package_id:
+        description: "Package ID"
+        required: true
+      name:
+        description: "iFlow Name"
+        required: true
       version:
-        description: "Use 'active' or give exact version"
+        description: "Version (or active)"
         required: true
         default: "active"
 
@@ -64,38 +70,25 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ FIXED VERSION RESOLUTION
-      - name: Resolve Version
-        id: resolve_version
+      # ✅ BASE64 ENCODE
+      - name: Encode ZIP to Base64
+        id: base64
         run: |
-          if [ "${{ github.event.inputs.version }}" = "active" ]; then
-            RESPONSE=$(curl -s \
-              -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
-              -H "Accept: application/json" \
-              "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')")
+          BASE64=$(base64 -w 0 artifact.zip)
+          echo "content=$BASE64" >> $GITHUB_OUTPUT
 
-            echo "Response: $RESPONSE"
-
-            VERSION=$(echo "$RESPONSE" | jq -r '.d.Version // empty')
-
-            if [ -z "$VERSION" ]; then
-              echo "Failed to extract version. Check response above."
-              exit 1
-            fi
-          else
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-
-          echo "Resolved version: $VERSION"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Upload to Target CPI
+      # ✅ CREATE / UPDATE IFLOW USING JSON (LIKE YOUR GROOVY)
+      - name: Upload iFlow via JSON API
         run: |
-          curl -f -X PUT \
-            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.resolve_version.outputs.version }}')" \
+          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "Content-Type: application/zip" \
-            --data-binary @artifact.zip
+            -H "Content-Type: application/json" \
+            -d '{
+              "Name": "${{ github.event.inputs.name }}",
+              "Id": "${{ github.event.inputs.iflow_id }}",
+              "PackageId": "${{ github.event.inputs.package_id }}",
+              "ArtifactContent": "${{ steps.base64.outputs.content }}"
+            }'
 
       - name: Deploy iFlow
         run: |
