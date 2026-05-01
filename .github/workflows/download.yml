@@ -1,4 +1,4 @@
-name: CPI Artifact Download Debug
+name: CPI Artifact Download Debug (Token Trace Enabled)
 
 on:
   workflow_dispatch:
@@ -24,38 +24,54 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Get Source OAuth Token
+      - name: Get Source OAuth Token (FULL TRACE)
         id: source_token
         run: |
-          TOKEN=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
+          echo "=== REQUESTING TOKEN ==="
+
+          RESPONSE=$(curl -s -X POST "${{ secrets.SOURCE_TOKEN_URL }}" \
             -d "grant_type=client_credentials" \
-            -u "${{ secrets.SOURCE_CLIENT_ID }}:${{ secrets.SOURCE_CLIENT_SECRET }}" \
-            | jq -r .access_token)
+            -u "${{ secrets.SOURCE_CLIENT_ID }}:${{ secrets.SOURCE_CLIENT_SECRET }}")
+
+          echo "=== TOKEN RESPONSE RAW ==="
+          echo "$RESPONSE"
+
+          TOKEN=$(echo "$RESPONSE" | jq -r .access_token)
+
+          echo "=== EXTRACTED TOKEN (PARTIAL MASK) ==="
+          echo "${TOKEN:0:20}...${TOKEN: -20}"
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Build CPI URL (Hardcoded Host + Dynamic ID)
+          echo "=== GITHUB OUTPUT STORED VALUE KEY ==="
+          cat $GITHUB_OUTPUT
+
+      - name: Verify Token Usage
+        run: |
+          echo "TOKEN BEING USED IN NEXT STEP:"
+          echo "${{ steps.source_token.outputs.token }}" | cut -c1-20
+          echo "..."
+
+      - name: Build CPI URL
         id: build_url
         run: |
           ID="${{ github.event.inputs.iflow_id }}"
           VERSION="${{ github.event.inputs.version }}"
 
-          URL="https://f2187e55trial.it-cpitrial06.cfapps.us10-001.hana.ondemand.com:443/api/v1/IntegrationDesigntimeArtifacts(Id='WildCraft_To_RE_OrdersCreate_And_Update',Version='active')/\$value"
+          URL="https://f2187e55trial.it-cpitrial06.cfapps.us10-001.hana.ondemand.com:443/api/v1/IntegrationDesigntimeArtifacts(Id='${ID}',Version='${VERSION}')/Content"
 
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - name: Debug URL
+      - name: Download Artifact (DEBUG MODE)
         run: |
-          echo "FINAL URL:"
-          echo "${{ steps.build_url.outputs.url }}"
+          echo "=== CALLING CPI ==="
 
-      - name: Download Artifact
-        run: |
-          curl --location --fail --silent --show-error \
+          curl -v --location \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip \
             "${{ steps.build_url.outputs.url }}"
 
+          echo "=== FILE CHECK ==="
           file artifact.zip
 
       - name: Convert to Base64
