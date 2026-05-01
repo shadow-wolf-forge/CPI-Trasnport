@@ -34,7 +34,6 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ KEEP YOUR ORIGINAL DOWNLOAD
       - name: Download iFlow ZIP
         run: |
           curl -X GET \
@@ -65,21 +64,31 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ GET REAL VERSION (if 'active' was passed)
+      # ✅ FIXED VERSION RESOLUTION
       - name: Resolve Version
         id: resolve_version
         run: |
           if [ "${{ github.event.inputs.version }}" = "active" ]; then
-            VERSION=$(curl -s \
-              "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+            RESPONSE=$(curl -s \
               -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
-              | jq -r '.d.Version')
+              -H "Accept: application/json" \
+              "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')")
+
+            echo "Response: $RESPONSE"
+
+            VERSION=$(echo "$RESPONSE" | jq -r '.d.Version // empty')
+
+            if [ -z "$VERSION" ]; then
+              echo "Failed to extract version. Check response above."
+              exit 1
+            fi
           else
             VERSION="${{ github.event.inputs.version }}"
           fi
+
+          echo "Resolved version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # ✅ CORRECT UPLOAD (binary PUT with real version)
       - name: Upload to Target CPI
         run: |
           curl -f -X PUT \
