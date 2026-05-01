@@ -83,7 +83,7 @@ jobs:
           BASE64_CONTENT=$(base64 artifact.zip | tr -d '\n')
           echo "content=$BASE64_CONTENT" >> $GITHUB_OUTPUT
 
-      - name: Upload iFlow (PUT with TRACE OUTPUT)
+      - name: Upload iFlow (Base64 JSON Wrapper)
         run: |
           cat <<EOF > payload.json
           {
@@ -100,9 +100,10 @@ jobs:
           echo "===== REQUEST BODY ====="
           cat payload.json
 
-          curl -v -X PUT "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+          curl -v -X PUT \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "X-CSRF-Token: ${{ steps.csrf.outputs.token }}" \
             -H "Cookie: ${{ steps.csrf.outputs.cookie }}" \
-            -H "Content-Type: application/atom+xml;type=entry;charset=utf-8" \
+            -H "Content-Type: application/json" \
             --data @payload.json
