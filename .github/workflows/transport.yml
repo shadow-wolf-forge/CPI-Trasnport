@@ -77,13 +77,20 @@ jobs:
           echo "token=$(grep -i x-csrf-token headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
           echo "cookie=$(grep -i set-cookie headers.txt | awk '{print $2}' | tr -d '\r')" >> $GITHUB_OUTPUT
 
-      - name: Encode Artifact to Base64
+      - name: Convert ZIP to Base64 (FULL DEBUG OUTPUT)
         id: encode
         run: |
+          echo "Encoding artifact.zip to Base64..."
+
           BASE64_CONTENT=$(base64 artifact.zip | tr -d '\n')
+
+          echo "===== FULL BASE64 OUTPUT START ====="
+          echo "$BASE64_CONTENT"
+          echo "===== FULL BASE64 OUTPUT END ====="
+
           echo "content=$BASE64_CONTENT" >> $GITHUB_OUTPUT
 
-      - name: Upload iFlow (Base64 JSON Wrapper)
+      - name: Build Payload (with Base64 variable)
         run: |
           cat <<EOF > payload.json
           {
@@ -94,12 +101,14 @@ jobs:
           }
           EOF
 
-          echo "===== REQUEST URL ====="
+          echo "===== FINAL REQUEST URL ====="
           echo "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')"
 
-          echo "===== REQUEST BODY ====="
+          echo "===== FINAL REQUEST BODY ====="
           cat payload.json
 
+      - name: Upload iFlow (Base64 JSON Wrapper)
+        run: |
           curl -v -X PUT \
             "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
