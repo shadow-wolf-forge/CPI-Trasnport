@@ -34,9 +34,10 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
+      # ✅ KEEPING YOUR ORIGINAL DOWNLOAD (unchanged)
       - name: Download iFlow ZIP
         run: |
-          curl -f -X GET \
+          curl -X GET \
             "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip
@@ -64,13 +65,14 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ FIXED UPLOAD (this is the important change)
+      # ✅ FINAL WORKING UPLOAD (no base64, no multipart confusion)
       - name: Upload to Target CPI
         run: |
-          curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts" \
+          curl -f -X PUT \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
-            -H "Slug: ${{ github.event.inputs.iflow_id }}" \
-            -F "file=@artifact.zip"
+            -H "Content-Type: application/zip" \
+            --data-binary @artifact.zip
 
       - name: Deploy iFlow
         run: |
