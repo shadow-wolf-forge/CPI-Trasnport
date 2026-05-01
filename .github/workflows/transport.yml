@@ -7,7 +7,7 @@ on:
         description: "Integration Flow ID"
         required: true
       version:
-        description: "Version (or active)"
+        description: "Use 'active' or give exact version"
         required: true
         default: "active"
 
@@ -34,7 +34,7 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ KEEPING YOUR ORIGINAL DOWNLOAD (unchanged)
+      # ✅ KEEP YOUR ORIGINAL DOWNLOAD
       - name: Download iFlow ZIP
         run: |
           curl -X GET \
@@ -65,11 +65,25 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ FINAL WORKING UPLOAD (no base64, no multipart confusion)
+      # ✅ GET REAL VERSION (if 'active' was passed)
+      - name: Resolve Version
+        id: resolve_version
+        run: |
+          if [ "${{ github.event.inputs.version }}" = "active" ]; then
+            VERSION=$(curl -s \
+              "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='active')" \
+              -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
+              | jq -r '.d.Version')
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # ✅ CORRECT UPLOAD (binary PUT with real version)
       - name: Upload to Target CPI
         run: |
           curl -f -X PUT \
-            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')" \
+            "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ steps.resolve_version.outputs.version }}')" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "Content-Type: application/zip" \
             --data-binary @artifact.zip
