@@ -32,11 +32,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Get Source OAuth Token
+      - name: Get Source Token
         id: source_token
         run: |
           RESPONSE=$(curl -s \
-            "${{ secrets.SRC_TOKEN_URL }}?grant_type=client_credentials" \
+            "${{ secrets.SRC_TOKEN_URL }}" \
             --header "Authorization: ${{ secrets.SRC_TOKEN_BASIC }}")
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
@@ -48,7 +48,7 @@ jobs:
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Download iFlow ZIP
+      - name: Download iFlow
         run: |
           URL="${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value"
 
@@ -73,11 +73,11 @@ jobs:
           git pull --rebase origin main
           git push origin main
 
-      - name: Get Target OAuth Token
+      - name: Get Target Token
         id: target_token
         run: |
           RESPONSE=$(curl -s \
-            "${{ secrets.TGT_TOKEN_URL }}?grant_type=client_credentials" \
+            "${{ secrets.TGT_TOKEN_URL }}" \
             --header "Authorization: ${{ secrets.TGT_TOKEN_BASIC }}")
 
           TOKEN=$(echo "$RESPONSE" | jq -r '.access_token // empty')
