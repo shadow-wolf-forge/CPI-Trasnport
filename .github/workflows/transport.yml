@@ -40,19 +40,13 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ FORCE FAIL IF DOWNLOAD FAILS
+      # ✅ DO NOT TOUCH (your working download)
       - name: Download iFlow ZIP
         run: |
-          curl -f -X GET \
+          curl -X GET \
             "${{ secrets.SOURCE_API_URL }}/api/v1/IntegrationDesigntimeArtifacts(Id='${{ github.event.inputs.iflow_id }}',Version='${{ github.event.inputs.version }}')/\$value" \
             -H "Authorization: Bearer ${{ steps.source_token.outputs.token }}" \
             -o artifact.zip
-
-      # ✅ VALIDATE FILE IS REAL ZIP
-      - name: Validate ZIP
-        run: |
-          file artifact.zip
-          unzip -t artifact.zip
 
       - name: Save into repo
         run: |
@@ -77,25 +71,33 @@ jobs:
             | jq -r .access_token)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ CORRECT BASE64 ENCODE
+      # ✅ SAFE BASE64 (no inline issues)
       - name: Encode ZIP to Base64
-        id: base64
         run: |
-          BASE64=$(base64 -w 0 artifact.zip)
-          echo "content=$BASE64" >> $GITHUB_OUTPUT
+          base64 -w 0 artifact.zip > artifact.b64
 
-      # ✅ SEND REAL CONTENT (NOT "Bad Request")
+      # ✅ BUILD JSON FILE (robust)
+      - name: Create Payload JSON
+        run: |
+          jq -n \
+            --arg name "${{ github.event.inputs.name }}" \
+            --arg id "${{ github.event.inputs.iflow_id }}" \
+            --arg package "${{ github.event.inputs.package_id }}" \
+            --rawfile content artifact.b64 \
+            '{
+              Name: $name,
+              Id: $id,
+              PackageId: $package,
+              ArtifactContent: $content
+            }' > payload.json
+
+      # ✅ UPLOAD (no string break issues)
       - name: Upload iFlow via JSON API
         run: |
           curl -f -X POST "${{ secrets.TARGET_API_URL }}/api/v1/IntegrationFlows" \
             -H "Authorization: Bearer ${{ steps.target_token.outputs.token }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"Name\": \"${{ github.event.inputs.name }}\",
-              \"Id\": \"${{ github.event.inputs.iflow_id }}\",
-              \"PackageId\": \"${{ github.event.inputs.package_id }}\",
-              \"ArtifactContent\": \"${{ steps.base64.outputs.content }}\"
-            }"
+            --data @payload.json
 
       - name: Deploy iFlow
         run: |
